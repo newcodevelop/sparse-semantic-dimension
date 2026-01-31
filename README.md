@@ -16,4 +16,4 @@ Key ingredients in the manuscript:
 
 ## License
 
-Apache 2.0
+This is work of Dibyanayan Bandyopadhyay and subsequently copyrighted by him. Can be used in Apache 2.0 license terms.
