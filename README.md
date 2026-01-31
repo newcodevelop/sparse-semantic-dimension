@@ -2,12 +2,12 @@
 
 # Sparse Semantic Generalization Bound (White Paper)
 
-This repository contains a short LaTeX white paper exploring a learning-theoretic explanation of LLM generalization via **sparse semantic features**, using **Sparse Autoencoders (SAEs)** as a proxy/compression model.
+This repository contains a short white paper exploring a learning-theoretic explanation of non-vacuous LLM generalization via **sparse semantic features**, using **Sparse Autoencoders (SAEs)** as a proxy/compression model. We argue that LLM having extreme high parameter counts actually capture all their knowledge in a low dimensional sparse manifold, which is captured by sparse activation on SAEs (S) trained on LLM (M) activation.
 
 Key ingredients in the manuscript:
 - A **proxy decomposition** that compares the original predictor to a proxy predictor $S\circ M$ built from an SAE reconstruction.
 - A bounded **language-modeling loss** based on **prediction-smoothed bits-per-token (BPD)**.
-- A sketch SRM-style bound in which the dominant complexity term scales like $k\log(em/k)$.
+- A generaization bound in which the dominant complexity term scales like $k\log(em/k)$.
 
 
 ## Notes
