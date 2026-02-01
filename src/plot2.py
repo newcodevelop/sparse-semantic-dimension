@@ -40,13 +40,23 @@ CONFIG = {
 # ==========================================
 # 2. HELPER FUNCTIONS
 # ==========================================
-def smoothed_bpd_loss(logits, tokens, alpha, vocab_size):
+def smoothed_bpd_loss(logits, tokens, alpha, vocab_size, reduction='mean'):
     probs = torch.softmax(logits, dim=-1)
     probs_shifted = probs[:, :-1, :]
     tokens_shifted = tokens[:, 1:]
     true_probs = torch.gather(probs_shifted, -1, tokens_shifted.unsqueeze(-1)).squeeze(-1)
     smoothed_probs = (1 - alpha) * true_probs + (alpha / vocab_size)
-    return -torch.log2(smoothed_probs).mean()
+    # return -torch.log2(smoothed_probs).mean()
+    # Log2 Loss (per token)
+    log_probs = -torch.log2(smoothed_probs)
+    
+    # Average over sequence dimension (dim=1) to get loss per sequence
+    loss_per_seq = log_probs.mean(dim=-1) 
+    
+    if reduction == 'mean':
+        return loss_per_seq.mean()
+    else:
+        return loss_per_seq # Returns [batch_size]
 
 def run_experiment_for_model(model_key, config):
     print(f"\n🚀 STARTING EXPERIMENT: {model_key}")
@@ -90,7 +100,8 @@ def run_experiment_for_model(model_key, config):
             with torch.no_grad():
                 hook_name = config["sae_id"]
                 orig_logits, cache = model.run_with_cache(tokens, names_filter=[hook_name])
-                
+                # NEW (104)
+                orig_loss_vec = smoothed_bpd_loss(orig_logits, tokens, CONFIG["ALPHA"], vocab_size, reduction='none')
                 # SAE
                 original_act = cache[hook_name]
                 flat_act = original_act.reshape(-1, original_act.shape[-1])
@@ -104,9 +115,17 @@ def run_experiment_for_model(model_key, config):
                 recons_reshaped = recons_act.reshape(original_act.shape)
                 def hook_fn(activations, hook): return recons_reshaped
                 proxy_logits = model.run_with_hooks(tokens, fwd_hooks=[(hook_name, hook_fn)])
-                proxy_loss = smoothed_bpd_loss(proxy_logits, tokens, CONFIG["ALPHA"], vocab_size)
+                # proxy_loss = smoothed_bpd_loss(proxy_logits, tokens, CONFIG["ALPHA"], vocab_size)
+                proxy_loss_vec = smoothed_bpd_loss(proxy_logits, tokens, CONFIG["ALPHA"], vocab_size, reduction='none')
 
-            gap = abs(smoothed_bpd_loss(orig_logits, tokens, CONFIG["ALPHA"], vocab_size).item() - proxy_loss.item())
+            # --- THE CORRECTION ---
+            # Calculate gap for each sequence, THEN average
+            gap_vec = torch.abs(orig_loss_vec - proxy_loss_vec)
+            gap = gap_vec.mean().item()
+            
+            # We still track the empirical proxy risk (mean)
+            proxy_loss = proxy_loss_vec.mean()
+            # gap = abs(smoothed_bpd_loss(orig_logits, tokens, CONFIG["ALPHA"], vocab_size).item() - proxy_loss.item())
             
             results["proxy"].append(proxy_loss.item())
             results["gap"].append(gap)
@@ -129,8 +148,8 @@ def run_experiment_for_model(model_key, config):
                 complexity = 4 * bounded_loss_cap * math.sqrt(ssd / N)
                 delta_k = (6 * CONFIG["DELTA"]) / (math.pi**2 * avg_k**2)
                 srm = bounded_loss_cap * math.sqrt(math.log(1/delta_k) / (2*N))
-                
-                total_bound = avg_proxy + avg_gap + complexity + srm
+                hoeffdings = 1 * bounded_loss_cap * math.sqrt(math.log(1/CONFIG["DELTA"]) / (2*N))
+                total_bound = avg_proxy + avg_gap + complexity + srm + hoeffdings
                 
                 plot_points.append({
                     "Model": model_key,
